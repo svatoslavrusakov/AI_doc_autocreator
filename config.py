@@ -1,16 +1,11 @@
-import os
+from pathlib import Path
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# Подключаем системные шрифты Windows с поддержкой кириллицы
-try:
-    pdfmetrics.registerFont(TTFont("Arial", "C:/Windows/Fonts/arial.ttf"))
-    pdfmetrics.registerFont(TTFont("Arial-Bold", "C:/Windows/Fonts/arialbd.ttf"))
-    FONT_REGULAR = "Arial"
-    FONT_BOLD = "Arial-Bold"
-except Exception:
-    FONT_REGULAR = "Helvetica"
-    FONT_BOLD = "Helvetica-Bold"
-
-OUTPUT_DIR = "output"
-DEFAULT_PDF_PATH = os.path.join(OUTPUT_DIR, "act.pdf")
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = str(BASE_DIR / "output")
+DEFAULT_PDF_PATH = None
+FONT_REGULAR = "DejaVuSans"
+FONT_BOLD = "DejaVuSans-Bold"
+for name in (FONT_REGULAR, FONT_BOLD):
+    pdfmetrics.registerFont(TTFont(name, str(BASE_DIR / "assets" / "fonts" / f"{name}.ttf")))

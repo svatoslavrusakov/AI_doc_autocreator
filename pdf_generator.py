@@ -1,91 +1,56 @@
-import os
+import re
+from datetime import date
+from pathlib import Path
+from uuid import uuid4
+from xml.sax.saxutils import escape
 from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from config import FONT_REGULAR, FONT_BOLD, DEFAULT_PDF_PATH, OUTPUT_DIR
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+from config import FONT_REGULAR, FONT_BOLD, OUTPUT_DIR
 from models import Customer, Job
 
-def render_act_pdf(customer: Customer, jobs: list[Job], filepath: str = DEFAULT_PDF_PATH):
-    """Создает или обновляет файл Акт выполненных работ в формате PDF"""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Эта штука отвечает за формирование имени файла
-    # Если путь не передан, формируем его динамически на основе компании
+def render_act_pdf(customer: Customer, jobs: list[Job], filepath=None, *, city: str = "", act_date: str | None = None):
+    """Создать акт с переносами текста и страниц. Явный filepath обновляет файл."""
+    if not city.strip():
+        raise ValueError("Укажите город составления акта")
+    day = date.fromisoformat(act_date) if act_date else date.today()
+    if any(type(job.price) is not int or job.price < 0 for job in jobs):
+        raise ValueError("Стоимость должна быть целым неотрицательным числом рублей")
     if filepath is None:
-        # Очищаем название компании от кавычек («», "", ''), двоеточий и прочих запрещенных символов
-        clean_company_name = re.sub(r'[\\/*?:"<>|«»\'\s]+', '_', customer.name)
-        # Убираем лишние подчеркивания по краям
-        clean_company_name = clean_company_name.strip('_')
-        
-        filename = f"act_{clean_company_name}.pdf"
-        filepath = os.path.join(OUTPUT_DIR, filename)
-
-    c = canvas.Canvas(filepath, pagesize=A4)
-    width, height = A4
-
-    # Заголовок
-    c.setFont(FONT_BOLD, 14)
-    c.drawCentredString(width / 2, height - 50, "АКТ № 1 приёмки-сдачи оказанных услуг")
-    
-    # Дата проведения
-    c.setFont(FONT_REGULAR, 9)
-    c.drawString(50, height - 70, "г. Москва")
-    c.drawRightString(width - 50, height - 70, "«17» августа 2026 г.")
-
-    # Данные Заказчика
-    c.setFont(FONT_BOLD, 10)
-    c.drawString(50, height - 95, "Заказчик:")
-    c.setFont(FONT_REGULAR, 9)
-    c.drawString(110, height - 95, f"{customer.name}, ИНН: {customer.INN}, ОГРН: {customer.OGRN}")
-    c.drawString(50, height - 110, f"Адрес: {customer.address}")
-    c.drawString(50, height - 125, f"Банк: {customer.bank.name}, БИК: {customer.bank.BIC}, Р/с: {customer.bank.current_account}")
-
-    # Линия
-    c.setLineWidth(0.5)
-    c.setStrokeColor(colors.gray)
-    c.line(50, height - 140, width - 50, height - 140)
-
-    # Table Header
-    c.setFont(FONT_BOLD, 10)
-    c.drawString(50, height - 160, "№")
-    c.drawString(80, height - 160, "Наименование оказанных услуг / выполненных работ")
-    c.drawRightString(width - 50, height - 160, "Сумма (руб.)")
-
-    c.line(50, height - 168, width - 50, height - 168)
-
-    y = height - 185
-    total_sum = 0
-    c.setFont(FONT_REGULAR, 9)
-
-    for idx, job in enumerate(jobs, 1):
-        c.drawString(50, y, str(idx))
-        c.drawString(80, y, str(job.task)[:65])
-        c.drawRightString(width - 50, y, f"{job.price:,}".replace(",", " "))
-        total_sum += job.price
-        y -= 18
-
-    c.line(50, y + 5, width - 50, y + 5)
-    y -= 15
-
-    # Итого
-    c.setFont(FONT_BOLD, 10)
-    total_str = f"ИТОГО: {total_sum:,} руб.".replace(",", " ")
-    c.drawRightString(width - 50, y, total_str)
-
-    y -= 30
-    c.setFont(FONT_REGULAR, 8)
-    c.drawString(50, y, "Вышеперечисленные услуги выполнены полностью и в срок. Заказчик претензий по качеству не имеет.")
-
-    # Блок подписей
-    y -= 45
-    c.setFont(FONT_BOLD, 9)
-    c.drawString(50, y, "Заказчик:")
-    c.drawString(width - 200, y, "Исполнитель:")
-    
-    y -= 20
-    c.setFont(FONT_REGULAR, 9)
-    c.drawString(50, y, f"________________ / {customer.signatory} /")
-    c.drawString(width - 200, y, "________________ / Русаков /")
-
-    c.save()
-    return filepath, total_sum
+        company = re.sub(r'[^\w-]+', '_', customer.name).strip('_')[:60] or 'customer'
+        filepath = Path(OUTPUT_DIR) / f"act_{company}_{uuid4().hex}.pdf"
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    style = ParagraphStyle('body', fontName=FONT_REGULAR, fontSize=10, leading=15, splitLongWords=True)
+    heading = ParagraphStyle('heading', parent=style, fontName=FONT_BOLD, fontSize=13, leading=18)
+    story = []
+    def add(text, bold=False):
+        story.append(Paragraph(escape(str(text)).replace('\n', '<br/>'), heading if bold else style))
+        story.append(Spacer(1, 10))
+    add('АКТ № 1 приёмки-сдачи оказанных услуг', True)
+    add(f'Город: {city}, дата: {day:%d.%m.%Y}')
+    add(f'Заказчик: {customer.name}, ИНН: {customer.INN}, ОГРН: {customer.OGRN}')
+    add(f'Адрес: {customer.address}')
+    add(f'Банк: {customer.bank.name}, БИК: {customer.bank.BIC}, р/с: {customer.bank.current_account}, к/с: {customer.bank.corporate_account}')
+    rows = [[Paragraph(text, style) for text in ('№', 'Наименование оказанных услуг / выполненных работ', 'Сумма (руб.)')]]
+    for i, job in enumerate(jobs, 1):
+        rows.append([str(i), Paragraph(escape(job.task).replace('\n', '<br/>'), style), f'{job.price:,}'.replace(',', ' ')])
+    table = Table(rows, colWidths=[30, A4[0] - 230, 100], repeatRows=1, splitInRow=1)
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), FONT_REGULAR),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.gray),
+        ('LINEBELOW', (0, -1), (-1, -1), 0.5, colors.gray),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.extend([table, Spacer(1, 15)])
+    total = sum(job.price for job in jobs)
+    add(f'ИТОГО: {total:,} руб.'.replace(',', ' '), True)
+    add('Услуги выполнены полностью и в срок. Заказчик претензий по качеству не имеет.')
+    story.append(KeepTogether([Paragraph(escape(f'Заказчик: ______________ / {customer.signatory} /'), style), Spacer(1, 20), Paragraph('Исполнитель: ______________ / ______________ /', style)]))
+    SimpleDocTemplate(str(path), pagesize=A4, rightMargin=50, leftMargin=50).build(story)
+    return str(path), total

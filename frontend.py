@@ -1,10 +1,14 @@
+import logging
 import glob
 import os
 import streamlit as st
 
-# Импортируем из твоих модулей только путь к папке и объект агента
+# Локальная конфигурация и фабрика агентов
 from config import OUTPUT_DIR
-from main import agent
+from main import create_agent
+
+if "agent" not in st.session_state:
+    st.session_state.agent = create_agent()
 
 # Настройка страницы
 st.set_page_config(
@@ -93,7 +97,11 @@ with col_chat:
         # Вызов твоего агента из main.py
         with st.chat_message("assistant"):
             with st.spinner("Агент выполняет запрос..."):
-                reply = agent.invoke(user_input)
+                try:
+                    reply = st.session_state.agent.invoke(user_input)
+                except Exception as exc:
+                    logging.getLogger(__name__).error("Agent request failed: %s", type(exc).__name__)
+                    reply = "Ошибка запроса: проверьте KoboldCpp и поддержку вызова инструментов."
                 st.write(reply)
 
         # Ответ агента
