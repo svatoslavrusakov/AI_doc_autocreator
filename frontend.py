@@ -12,6 +12,33 @@ st.set_page_config(
 )
 st.title("🤖 AI-Агент управления Актом")
 
+# код отключения анимаий
+# 2. ПРЯМО СЮДА ВСТАВЛЯЕТСЯ ЭТОТ CSS-КОД:
+st.markdown(
+    """
+    <style>
+        /* Отключаем все анимации */
+        *, *::before, *::after {
+            animation: none !important;
+            transition: none !important;
+        }
+
+        /* Убираем бегающего человечка в правом верхнем углу */
+        [data-testid="stStatusWidget"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* Убираем серую верхнюю полосу Streamlit */
+        header[data-testid="stHeader"] {
+            display: none !important;
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+# Коне кода для отключения анимий
+
 # Хранение истории чата в сессии браузера
 if "messages" not in st.session_state:
     st.session_state.messages = []
